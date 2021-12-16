@@ -7,4 +7,5 @@ Test
 
 Example command to run the script
 
-`python postgres_helper.py --csv-file-location /archive/Answers.csv --postgres-db stackoverflow --postgres-table answers --postgres-hostname hostname --postgres-username username --postgres-password password`
+`python postgres_helper.py --csv-file-location /archive/Answers.csv --postgres-db stackoverflow --postgres-table answers --postgres-hostname hostname --postgres-username username --postgres-jceks-location ./postgres.jceks --postgres-jceks-password
+secret_for_jceks`

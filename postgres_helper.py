@@ -1,7 +1,11 @@
+"""This utility call native postgres C bindings to call COPY utility to load CSV data into postgresdb"""
+import typing
+
 import psycopg2
 import time
 import argparse
 import logging
+import jks
 
 logging.basicConfig(level=logging.INFO)
 
@@ -10,17 +14,24 @@ def arg_parser():
     parser.add_argument('--csv-file-location', help='location of csv file', required=True)
     parser.add_argument('--postgres-hostname', help='postgres hostname', required=True)
     parser.add_argument('--postgres-username', help='postgres username', required=True)
-    parser.add_argument('--postgres-password', help='postgres password', required=True)
+    parser.add_argument('--postgres-jceks-location', help='jceks file location', required=True)
+    parser.add_argument('--postgres-jceks-password', help='password for jceks file', required=True)
     parser.add_argument('--postgres-db', help='postgres db name', required=True)
     parser.add_argument('--postgres-table', help='postgres table name', required=True)
 
     return parser.parse_args()
 
 
-def copy_to_postgres(args):
+def copy_to_postgres(args: typing.List[str], postgres_secret: str):
+    """
+    Loads CSV to postgres DB
+    :param args: system args to connect to postgres DB
+    :param postgres_secret: postgres DB pass
+    :return:
+    """
     conn = psycopg2.connect(database=args.postgres_db,
                             user = args.postgres_username,
-                            password = args.postgres_password,
+                            password = postgres_secret,
                             host =args.postgres_hostname,
                             port = "5432")
     cur = conn.cursor()
@@ -38,5 +49,26 @@ def copy_to_postgres(args):
     conn.close()
     logging.info(f"Load time %s secs", round(end - start,2))
 
+
+def get_pass_from_jceks(location: str, secret:str) -> str:
+    """
+    Get secret from jceks file
+
+    :param location: location of jceks file
+    :param secret: password to open jceks file
+    :return: secret stored in jceks file
+    """
+    # Load jceks file
+    store = jks.KeyStore.load(location, secret)
+    alias = list(store.secret_keys.keys())[0]
+    return store.secret_keys[alias].key.decode("utf-8")
+
+
 if __name__=='__main__':
-    copy_to_postgres(arg_parser())
+    args = arg_parser()
+    postgres_secret = get_pass_from_jceks(
+        location=args.postgres_jceks_location,
+        secret=args.postgres_jceks_password
+    )
+    copy_to_postgres(args, postgres_secret)
+

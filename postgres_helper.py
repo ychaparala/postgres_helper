@@ -29,11 +29,11 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     :param postgres_secret: postgres DB pass
     :return:
     """
-    conn = psycopg2.connect(database=args.postgres_db,
+    conn = psycopg2.connect(database = args.postgres_db,
                             user = args.postgres_username,
                             password = postgres_secret,
-                            host =args.postgres_hostname,
-                            port = "5432")
+                            host = args.postgres_hostname,
+                            port = "8124")
     cur = conn.cursor()
     logging.info("connected to postgres db")
     start = time.time()
@@ -45,9 +45,9 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     cur.execute(f"SELECT count(*)  from {args.postgres_table}")
     rows = cur.fetchall()
     for row in rows:
-        logging.info(f"Number of rows in {args.postgres_table}: %s",row)
+        logging.info(f"Number of rows in {args.postgres_table}: %s", row)
     conn.close()
-    logging.info(f"Load time %s secs", round(end - start,2))
+    logging.info(f"Load time %s secs", round(end - start, 2))
 
 
 def get_pass_from_jceks(location: str, alias: str) -> str:
@@ -55,7 +55,7 @@ def get_pass_from_jceks(location: str, alias: str) -> str:
     Get secret from jceks file
 
     :param location: location of jceks file
-    :param secret: password to open jceks file
+    :param alias: password to open jceks file
     :return: secret stored in jceks file
     """
     # Load jceks file
@@ -63,11 +63,10 @@ def get_pass_from_jceks(location: str, alias: str) -> str:
     return store.secret_keys[alias].key.decode("utf-8")
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     args = arg_parser()
     postgres_secret = get_pass_from_jceks(
         location=args.postgres_jceks_location,
         alias=args.postgres_password_alias
     )
     copy_to_postgres(args, postgres_secret)
-

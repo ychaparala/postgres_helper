@@ -38,8 +38,8 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     logging.info("connected to postgres db")
     start = time.time()
     # open CSV file
-    with open(args.csv_file_location, encoding="latin1",) as f:
-        cur.copy_expert(f"""COPY {args.postgres_table} FROM STDIN delimiter ',' CSV HEADER""", f)
+    with open(args.csv_file_location, encoding="utf8",) as f:
+        cur.copy_expert(f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', delimiter ',', quote '|', encoding 'UTF-8')""", f)
         conn.commit()
     end = time.time()
     cur.execute(f"SELECT count(*)  from {args.postgres_table}")

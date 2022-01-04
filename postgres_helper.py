@@ -1,4 +1,6 @@
 """This utility call native postgres C bindings to call COPY utility to load CSV data into postgresdb"""
+import csv
+import io
 import typing
 
 import psycopg2
@@ -6,6 +8,7 @@ import time
 import argparse
 import logging
 import jks
+import pandas as pd
 
 logging.basicConfig(level=logging.INFO)
 
@@ -37,15 +40,26 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     cur = conn.cursor()
     logging.info("connected to postgres db")
     start = time.time()
-    # open CSV file
-    with open(args.csv_file_location, encoding="utf8",) as f:
-        cur.copy_expert(f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', delimiter ',', quote '|', encoding 'UTF-8')""", f)
-        conn.commit()
+    # Query target table to get columns list
+    cur.execute(f"SELECT * FROM {args.postgres_table} LIMIT 0")
+    colnames = [desc[0].lower() for desc in cur.description]
+    logging.info("Columns in target table %s.%s: %s", args.postgres_db, args.postgres_table, colnames)
+    # Create pandas dataframe
+    df = pd.read_csv(args.csv_file_location, encoding='latin1')
+    df.columns = map(str.lower, df.columns)
+    if set(df.columns) - set(colnames):
+        logging.info("Dropping these source columns %s", set(df.columns) - set(colnames))
+    # create StringIO object with target columns
+    sio = io.StringIO()
+    sio.write(df[colnames].to_csv(index=False, header=False, quoting=csv.QUOTE_NONNUMERIC, sep=','))
+    sio.seek(0)
+    # Copy to Postgres
+    cur.copy_expert(f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', delimiter ',', encoding 'UTF-8')""", sio)
+    conn.commit()
     end = time.time()
     cur.execute(f"SELECT count(*)  from {args.postgres_table}")
     rows = cur.fetchall()
-    for row in rows:
-        logging.info(f"Number of rows in {args.postgres_table}: %s", row)
+    logging.info(f"Number of rows in {args.postgres_table}: %s", rows[0])
     conn.close()
     logging.info(f"Load time %s secs", round(end - start, 2))
 

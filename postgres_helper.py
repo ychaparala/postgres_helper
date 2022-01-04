@@ -14,7 +14,8 @@ logging.basicConfig(level=logging.INFO)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Utility to copy csv data into postgres DB')
-    parser.add_argument('--csv-file-location', help='location of csv file', required=True)
+    parser.add_argument('--in-csv-file-location', help='location of csv file', required=False)
+    parser.add_argument('--out-csv-file-location', help='location of csv file', required=False)
     parser.add_argument('--postgres-hostname', help='postgres hostname', required=True)
     parser.add_argument('--postgres-username', help='postgres username', required=True)
     parser.add_argument('--postgres-jceks-location', help='jceks file location', required=True)
@@ -45,7 +46,7 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     colnames = [desc[0].lower() for desc in cur.description]
     logging.info("Columns in target table %s.%s: %s", args.postgres_db, args.postgres_table, colnames)
     # Create pandas dataframe
-    df = pd.read_csv(args.csv_file_location, encoding='latin1')
+    df = pd.read_csv(args.in_csv_file_location)
     df.columns = map(str.lower, df.columns)
     if set(df.columns) - set(colnames):
         logging.info("Dropping these source columns %s", set(df.columns) - set(colnames))
@@ -53,9 +54,18 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     sio = io.StringIO()
     sio.write(df[colnames].to_csv(index=False, header=False, quoting=csv.QUOTE_NONNUMERIC, sep=','))
     sio.seek(0)
-    # Copy to Postgres
-    cur.copy_expert(f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', delimiter ',', encoding 'UTF-8')""", sio)
+    try:
+        # Copy to Postgres
+        cur.copy_expert(
+            f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', 
+            delimiter ',', encoding 'UTF-8')""",
+            sio)
+    except psycopg2.Error as e:
+        conn.rollback()
+        conn.close()
+        raise Exception(e)
     conn.commit()
+    sio.close()
     end = time.time()
     cur.execute(f"SELECT count(*)  from {args.postgres_table}")
     rows = cur.fetchall()
@@ -77,10 +87,46 @@ def get_pass_from_jceks(location: str, alias: str) -> str:
     return store.secret_keys[alias].key.decode("utf-8")
 
 
+def copy_from_postgres(args: typing.List[str], postgres_secret: str):
+    """
+    Creates CSV from postgres DB
+    :param args: system args to connect to postgres DB
+    :param postgres_secret: postgres DB pass
+    :return:
+    """
+    conn = psycopg2.connect(database = args.postgres_db,
+                            user = args.postgres_username,
+                            password = postgres_secret,
+                            host = args.postgres_hostname,
+                            port = "8124")
+    cur = conn.cursor()
+    logging.info("connected to postgres db")
+    start = time.time()
+    try:
+        with open(args.out_csv_file_location, 'w+') as f:
+            cur.copy_expert(f"""COPY {args.postgres_table} TO STDOUT with (format txt_variable, 
+            lines_terminated_by e'\n', delimiter ',', encoding 'UTF-8""", f)
+    except psycopg2.Error as e:
+        conn.rollback()
+        conn.close()
+        raise Exception(e)
+    conn.commit()
+    end = time.time()
+    conn.close()
+    logging.info(f"Load time %s secs", round(end - start, 2))
+
+
 if __name__ == '__main__':
     args = arg_parser()
     postgres_secret = get_pass_from_jceks(
         location=args.postgres_jceks_location,
         alias=args.postgres_password_alias
     )
-    copy_to_postgres(args, postgres_secret)
+    if args.in_csv_file_location and args.out_csv_file_location:
+        raise Exception('Please provide either --in-csv-file-location arg or --out-csv-file-location argument not both')
+    elif args.in_csv_file_location:
+        copy_to_postgres(args, postgres_secret)
+    elif args.out_csv_file_location:
+        copy_from_postgres(args, postgres_secret)
+    else:
+        raise Exception('Please provide either --in-csv-file-location arg or --out-csv-file-location argument')

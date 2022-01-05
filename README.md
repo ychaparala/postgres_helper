@@ -12,5 +12,5 @@ secret_alias`
 
 Example command to dump data from hyperstage to csv
 
-`python postgres_helper.py --out-csv-file-location /archive/Answers.csv --postgres-db stackoverflow --postgres-table answers --postgres-hostname hostname --postgres-username username --postgres-jceks-location ./postgres.jceks --postgres-password-alias
+`python postgres_helper.py --out-csv-file-location /archive/Answers.csv --out-csv-filter-condition "create_date='2022-01-04'" --postgres-db stackoverflow --postgres-table answers --postgres-hostname hostname --postgres-username username --postgres-jceks-location ./postgres.jceks --postgres-password-alias
 secret_alias`

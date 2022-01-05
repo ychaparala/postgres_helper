@@ -9,13 +9,18 @@ import argparse
 import logging
 import jks
 import pandas as pd
+from fastavro import reader
 
 logging.basicConfig(level=logging.INFO)
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Utility to copy csv data into postgres DB')
-    parser.add_argument('--in-csv-file-location', help='location of csv file', required=False)
-    parser.add_argument('--out-csv-file-location', help='location of csv file', required=False)
+    parser.add_argument('--in-csv-file-location', help='location of csv file to copy to Postgres table',
+                        required=False)
+    parser.add_argument('--out-csv-file-location', help='location of csv file to copy from postgres table',
+                        required=False)
+    parser.add_argument('--out-csv-filter-condition', help='Filter condition to select data from postgres table',
+                        required=False)
     parser.add_argument('--postgres-hostname', help='postgres hostname', required=True)
     parser.add_argument('--postgres-username', help='postgres username', required=True)
     parser.add_argument('--postgres-jceks-location', help='jceks file location', required=True)
@@ -45,8 +50,13 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     cur.execute(f"SELECT * FROM {args.postgres_table} LIMIT 0")
     colnames = [desc[0].lower() for desc in cur.description]
     logging.info("Columns in target table %s.%s: %s", args.postgres_db, args.postgres_table, colnames)
+    # Read Avro file
+    rows = []
+    with open(f'{args.in_csv_file_location}', 'rb') as f:
+        for record in reader(f):
+            rows.append(record)
     # Create pandas dataframe
-    df = pd.read_csv(args.in_csv_file_location)
+    df = pd.DataFrame.from_records(rows)
     df.columns = map(str.lower, df.columns)
     if set(df.columns) - set(colnames):
         logging.info("Dropping these source columns %s", set(df.columns) - set(colnames))
@@ -57,9 +67,8 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     try:
         # Copy to Postgres
         cur.copy_expert(
-            f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', 
-            delimiter ',', encoding 'UTF-8')""",
-            sio)
+            f"""COPY {args.postgres_table} FROM STDIN with (format txt_variable, lines_terminated_by e'\n', delimiter 
+            ',', encoding 'UTF-8')""", sio)
     except psycopg2.Error as e:
         conn.rollback()
         conn.close()
@@ -104,8 +113,8 @@ def copy_from_postgres(args: typing.List[str], postgres_secret: str):
     start = time.time()
     try:
         with open(args.out_csv_file_location, 'w+') as f:
-            cur.copy_expert(f"""COPY {args.postgres_table} TO STDOUT with (format txt_variable, 
-            lines_terminated_by e'\n', delimiter ',', encoding 'UTF-8""", f)
+            cur.copy_expert(f"""COPY (select * from {args.postgres_table} where {args.out_csv_filter_condition}) TO 
+            STDOUT with (format csv, delimiter ',', encoding 'UTF-8')""", f)
     except psycopg2.Error as e:
         conn.rollback()
         conn.close()
@@ -126,7 +135,8 @@ if __name__ == '__main__':
         raise Exception('Please provide either --in-csv-file-location arg or --out-csv-file-location argument not both')
     elif args.in_csv_file_location:
         copy_to_postgres(args, postgres_secret)
-    elif args.out_csv_file_location:
+    elif args.out_csv_file_location and args.out_csv_filter_condition:
         copy_from_postgres(args, postgres_secret)
     else:
-        raise Exception('Please provide either --in-csv-file-location arg or --out-csv-file-location argument')
+        raise Exception('Please provide either --in-csv-file-location arg or (--out-csv-file-location argument and '
+                        '--out-csv-filter-condition)')

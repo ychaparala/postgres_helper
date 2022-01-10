@@ -1,4 +1,4 @@
-"""This utility call native postgres C bindings to call COPY utility to load CSV data into postgresdb"""
+"""This utility is used to load AVRO data into hyperstage, dump hyperstage data to csv"""
 import csv
 import io
 import typing
@@ -13,9 +13,10 @@ from fastavro import reader
 
 logging.basicConfig(level=logging.INFO)
 
+
 def arg_parser():
-    parser = argparse.ArgumentParser(description='Utility to copy csv data into postgres DB')
-    parser.add_argument('--in-csv-file-location', help='location of csv file to copy to Postgres table',
+    parser = argparse.ArgumentParser(description='Utility to load avro data into postgres DB')
+    parser.add_argument('--in-avro-file-location', help='location of avro file to copy to Postgres table',
                         required=False)
     parser.add_argument('--out-csv-file-location', help='location of csv file to copy from postgres table',
                         required=False)
@@ -33,16 +34,16 @@ def arg_parser():
 
 def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     """
-    Loads CSV to postgres DB
+    Loads Avro to postgres DB
     :param args: system args to connect to postgres DB
     :param postgres_secret: postgres DB pass
     :return:
     """
-    conn = psycopg2.connect(database = args.postgres_db,
-                            user = args.postgres_username,
-                            password = postgres_secret,
-                            host = args.postgres_hostname,
-                            port = "8124")
+    conn = psycopg2.connect(database=args.postgres_db,
+                            user=args.postgres_username,
+                            password=postgres_secret,
+                            host=args.postgres_hostname,
+                            port="8124")
     cur = conn.cursor()
     logging.info("connected to postgres db")
     start = time.time()
@@ -52,7 +53,7 @@ def copy_to_postgres(args: typing.List[str], postgres_secret: str):
     logging.info("Columns in target table %s.%s: %s", args.postgres_db, args.postgres_table, colnames)
     # Read Avro file
     rows = []
-    with open(f'{args.in_csv_file_location}', 'rb') as f:
+    with open(f'{args.in_avro_file_location}', 'rb') as f:
         for record in reader(f):
             rows.append(record)
     # Create pandas dataframe
@@ -110,9 +111,13 @@ def copy_from_postgres(args: typing.List[str], postgres_secret: str):
                             port = "8124")
     cur = conn.cursor()
     logging.info("connected to postgres db")
+    cur.execute(f"SELECT * FROM {args.postgres_table} LIMIT 0")
+    colnames = [desc[0] for desc in cur.description]
     start = time.time()
     try:
-        with open(args.out_csv_file_location, 'w+') as f:
+        with open(args.out_csv_file_location, 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(colnames)
             cur.copy_expert(f"""COPY (select * from {args.postgres_table} where {args.out_csv_filter_condition}) TO 
             STDOUT with (format csv, delimiter ',', encoding 'UTF-8')""", f)
     except psycopg2.Error as e:
@@ -131,12 +136,12 @@ if __name__ == '__main__':
         location=args.postgres_jceks_location,
         alias=args.postgres_password_alias
     )
-    if args.in_csv_file_location and args.out_csv_file_location:
-        raise Exception('Please provide either --in-csv-file-location arg or --out-csv-file-location argument not both')
-    elif args.in_csv_file_location:
+    if args.in_avro_file_location and args.out_csv_file_location:
+        raise Exception('Please provide either --in-avro-file-location arg or --out-csv-file-location argument not both')
+    elif args.in_avro_file_location:
         copy_to_postgres(args, postgres_secret)
     elif args.out_csv_file_location and args.out_csv_filter_condition:
         copy_from_postgres(args, postgres_secret)
     else:
-        raise Exception('Please provide either --in-csv-file-location arg or (--out-csv-file-location argument and '
+        raise Exception('Please provide either --in-avro-file-location arg or (--out-csv-file-location argument and '
                         '--out-csv-filter-condition)')

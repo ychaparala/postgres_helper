@@ -77,7 +77,7 @@ def copy_to_oracle(args: typing.List[str], oracle_secret: str):
                 b[index] = None
     # split the data based on batch size
     if len(bind_insert) > batch_size:
-        for rows in np.array_split(bind_insert, math.floor(len(bind_insert)/batch_size)):
+        for rows in np.array_split(bind_insert, math.ceil(len(bind_insert)/batch_size)):
             cur.executemany(insert_sql, list(rows))
     else:
         cur.executemany(insert_sql, bind_insert)

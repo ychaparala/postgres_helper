@@ -23,3 +23,7 @@ Example command to load csv to Oracle
 Example command to dump data from Oracle to csv
 
 `python oralce_helper.py --out-csv-file-location /archive/Answers.csv --out-csv-filter-condition "create_date='2022-01-04'" --oracle-hostname hostname --oracle-sid test --oracle-username username --oracle-jceks-location /path_to_jceks/oracle.jceks --oracle-password-alias password.alias --oracle-db oracle_db --oracle-table oracle_table`
+
+Example command to dump data from SQL Anywhere DB to csv 
+
+`python3 sap_helper.py --out-csv-file-location sample_data_out.csv --sap-db-hostname host --sap-db-username user --sap-db-jceks-location /test.jceks --sap-db-password-alias pass --sap-db-query "select * from demo..spt_collation_map"`
